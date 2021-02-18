@@ -24,6 +24,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import javax.script.ScriptEngine;
 
+import com.sun.security.ntlm.Server;
 import connections.Database.MYSQLException;
 import client.Character.MapleCharacter;
 import client.Character.MapleCharacterUtil;
@@ -51,11 +52,13 @@ import connections.Packets.MainPacketCreator;
 import connections.Crypto.MapleCrypto;
 import connections.Packets.PacketUtility.ReadingMaple;
 import launcher.AdminGUI.AdminTool;
+import org.mindrot.jbcrypt.BCrypt;
 import scripting.NPC.NPCScriptManager;
 import server.Shops.IMapleCharacterShop;
 import tools.FileoutputUtil;
 import tools.LoggerChatting;
 import tools.Timer.PingTimer;
+import tools.Util;
 
 public class MapleClient {
 
@@ -710,6 +713,16 @@ public class MapleClient {
 				usingSecondPassword = rs.getByte("using2ndpassword") == 1;
 				ps.close();
 
+                boolean hashed = Util.isStringBCrypt(password);
+
+                if(!hashed) {
+                     PreparedStatement preparedStatement = con.prepareStatement("UPDATE accounts SET password = ? WHERE name = ?");
+                     preparedStatement.setString(1, BCrypt.hashpw(password, BCrypt.gensalt(ServerConstants.GENSALT_ITERATIONS)));
+                     preparedStatement.setString(2, login);
+                     preparedStatement.executeUpdate();
+                     preparedStatement.close();
+                }
+
 				if (banned > 0) {
 					loginok = 3;
 				} else {
@@ -722,22 +735,36 @@ public class MapleClient {
 						loggedIn = false;
 						loginok = 7;
 
-					} else if (pwd.equals(password)) {
-						if (ServerConstants.isDev == true) { // Change if in dev
-							if (gm) {
-								loggedIn = true;
-								loginok = 0;
-								SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHH");
-								updateLastConnection(sdf.format(Calendar.getInstance().getTime()));
-							} else {
-								loggedIn = false;
-								loginok = 4;
-							}
+					}
+					else if (hashed && BCrypt.checkpw(pwd, password) || !hashed && pwd.equals(password) ) {
+						if (ServerConstants.isDev) { // Change if in dev
+                            if (gm) {
+                                loggedIn = true;
+                                loginok = 0;
+                                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHH");
+                                Calendar c = Calendar.getInstance();
+                                int year = c.get(Calendar.YEAR);
+                                if (year > 2560) {
+                                    c.add(Calendar.YEAR, -543);
+                                }
+                                String dateTime = sdf.format(c.getTime());
+                                updateLastConnection(dateTime);
+                            } else {
+                                loggedIn = false;
+                                loginok = 4;
+                            }
 						} else {
 							loggedIn = true;
 							loginok = 0;
 							SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHH");
-							updateLastConnection(sdf.format(Calendar.getInstance().getTime()));
+							Calendar c = Calendar.getInstance();
+							int year = c.get(Calendar.YEAR);
+							if(year > 2560)
+							{
+								c.add(Calendar.YEAR, -543);
+							}
+							String dateTime = sdf.format(c.getTime());
+							updateLastConnection(dateTime);
 
 						}
 					} else {
@@ -946,13 +973,22 @@ public class MapleClient {
 			ps = con.prepareStatement("UPDATE accounts SET loggedin = ?, SessionIP = ?, lastlogin = ? WHERE id = ?");
 			ps.setInt(1, newstate);
 			ps.setString(2, serial);
-			ps.setTimestamp(3, new Timestamp(System.currentTimeMillis()));
+			Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd:HH:mm:ss");
+			Calendar c = Calendar.getInstance();
+			int year = c.get(Calendar.YEAR);
+			if(year > 2560)
+			{
+				c.add(Calendar.YEAR, -543);
+			}
+			String dateTime = sdf.format(c.getTime());
+			ps.setString(3, dateTime);
 			ps.setInt(4, getAccID());
 			ps.executeUpdate();
 			ps.close();
 			con.close();
 		} catch (SQLException e) {
-			System.err.println("error updating login state" + e);
+			System.err.println("error updating login state new state: " + e);
 		} finally {
 			try {
 				if (ps != null) {
@@ -1307,7 +1343,14 @@ public class MapleClient {
 				} finally {
 					if (RemoveInChannelServer && ch != null) {
 						SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHH");
-						updateLastConnection(sdf.format(Calendar.getInstance().getTime()));
+						Calendar c = Calendar.getInstance();
+						int year = c.get(Calendar.YEAR);
+						if(year > 2560)
+						{
+							c.add(Calendar.YEAR, -543);
+						}
+						String dateTime = sdf.format(c.getTime());
+						updateLastConnection(dateTime);
 						ch.removePlayer(player);
 						AdminTool.broadcastMessage(AdminToolPacket.Info());
 					}

@@ -5,8 +5,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 import client.MapleClient;
+import com.sun.security.ntlm.Server;
 import constants.ServerConstants;
 import connections.Database.MYSQL;
+import org.mindrot.jbcrypt.BCrypt;
 
 public class AutoRegister {
 
@@ -61,17 +63,19 @@ public class AutoRegister {
         }
         return 5;
     }
+
     public static void registerAccount(MapleClient account, String name, String password) {
         Connection connect = null;
         PreparedStatement query = null;
         ResultSet result = null;
+        String hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt(ServerConstants.GENSALT_ITERATIONS)); // Hash passwords with 10 iterations
         try {
             connect = MYSQL.getConnection();
             query = connect.prepareStatement(
                     "INSERT INTO accounts (name, password, 2ndpassword, using2ndpassword, ip) VALUES (?, ?, ?, ?, ?)",
                     MYSQL.RETURN_GENERATED_KEYS);
             query.setString(1, name);
-            query.setString(2, password);
+            query.setString(2, hashedPassword);
             query.setString(3, "");
             query.setInt(4, 0);
             query.setString(5, account.getSessionIPAddress());
